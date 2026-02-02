@@ -465,7 +465,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
     const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
-    const url = `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
+    const _url = `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
       firstPost.settings.content_posting_method,
       (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1
     )}`;
@@ -542,14 +542,14 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     // Log the curl command
     console.log(
       '\n[TikTok API Request]\n' +
-        this.formatAsCurl('POST', url, headers, bodyString) +
+        this.formatAsCurl('POST', _url, headers, bodyString) +
         '\n'
     );
 
     const {
       data: { publish_id },
     } = await (
-      await this.fetch(url, {
+      await this.fetch(_url, {
         method: 'POST',
         headers,
         body: bodyString,
@@ -565,7 +565,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     return [
       {
         id: firstPost.id,
-        releaseURL: url,
+        releaseURL: _url,
         postId: String(videoId),
         status: 'success',
       },
