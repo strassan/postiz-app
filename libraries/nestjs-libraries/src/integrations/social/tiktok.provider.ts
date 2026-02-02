@@ -436,6 +436,27 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
+  private formatAsCurl(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body: string
+  ): string {
+    let curl = `curl -X ${method} '${url}'`;
+
+    Object.entries(headers).forEach(([key, value]) => {
+      curl += ` \\\n  -H '${key}: ${value}'`;
+    });
+
+    if (body) {
+      // Escape single quotes in the body for shell safety
+      const escapedBody = body.replace(/'/g, "'\\''");
+      curl += ` \\\n  -d '${escapedBody}'`;
+    }
+
+    return curl;
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -444,83 +465,95 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
     const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
+    const url = `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
+      firstPost.settings.content_posting_method,
+      (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1
+    )}`;
+
+    const headers = {
+      'Content-Type': 'application/json; charset=UTF-8',
+      Authorization: `Bearer ${accessToken}`,
+    };
+
+    const bodyData = {
+      ...((firstPost?.settings?.content_posting_method ||
+        'DIRECT_POST') === 'DIRECT_POST'
+        ? {
+            post_info: {
+              ...((firstPost?.settings?.title && isPhoto) ||
+              (firstPost.message && !isPhoto)
+                ? {
+                    title: isPhoto
+                      ? firstPost.settings.title
+                      : firstPost.message,
+                  }
+                : {}),
+              ...(isPhoto ? { description: firstPost.message } : {}),
+              privacy_level:
+                firstPost.settings.privacy_level || 'PUBLIC_TO_EVERYONE',
+              disable_duet: !firstPost.settings.duet || false,
+              disable_comment: !firstPost.settings.comment || false,
+              disable_stitch: !firstPost.settings.stitch || false,
+              is_aigc: firstPost.settings.video_made_with_ai || false,
+              brand_content_toggle:
+                firstPost.settings.brand_content_toggle || false,
+              brand_organic_toggle:
+                firstPost.settings.brand_organic_toggle || false,
+              ...((firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) ===
+              -1
+                ? {
+                    auto_add_music:
+                      firstPost.settings.autoAddMusic === 'yes',
+                  }
+                : {}),
+            },
+          }
+        : {}),
+      ...((firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) > -1
+        ? {
+            source_info: {
+              source: 'PULL_FROM_URL',
+              video_url: firstPost?.media?.[0]?.path!,
+              ...(firstPost?.media?.[0]?.thumbnailTimestamp!
+                ? {
+                    video_cover_timestamp_ms:
+                      firstPost?.media?.[0]?.thumbnailTimestamp!,
+                  }
+                : {}),
+            },
+          }
+        : {
+            source_info: {
+              source: 'PULL_FROM_URL',
+              photo_cover_index: 0,
+              photo_images: firstPost.media?.map((p) => p.path),
+            },
+            post_mode:
+              firstPost?.settings?.content_posting_method ===
+              'DIRECT_POST'
+                ? 'DIRECT_POST'
+                : undefined,
+            media_type: 'PHOTO',
+          }),
+    };
+
+    const bodyString = JSON.stringify(bodyData);
+
+    // Log the curl command
+    console.log(
+      '\n[TikTok API Request]\n' +
+        this.formatAsCurl('POST', url, headers, bodyString) +
+        '\n'
+    );
+
     const {
       data: { publish_id },
     } = await (
-      await this.fetch(
-        `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
-          firstPost.settings.content_posting_method,
-          (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1
-        )}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=UTF-8',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            ...((firstPost?.settings?.content_posting_method ||
-              'DIRECT_POST') === 'DIRECT_POST'
-              ? {
-                  post_info: {
-                    ...((firstPost?.settings?.title && isPhoto) ||
-                    (firstPost.message && !isPhoto)
-                      ? {
-                          title: isPhoto
-                            ? firstPost.settings.title
-                            : firstPost.message,
-                        }
-                      : {}),
-                    ...(isPhoto ? { description: firstPost.message } : {}),
-                    privacy_level:
-                      firstPost.settings.privacy_level || 'PUBLIC_TO_EVERYONE',
-                    disable_duet: !firstPost.settings.duet || false,
-                    disable_comment: !firstPost.settings.comment || false,
-                    disable_stitch: !firstPost.settings.stitch || false,
-                    is_aigc: firstPost.settings.video_made_with_ai || false,
-                    brand_content_toggle:
-                      firstPost.settings.brand_content_toggle || false,
-                    brand_organic_toggle:
-                      firstPost.settings.brand_organic_toggle || false,
-                    ...((firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) ===
-                    -1
-                      ? {
-                          auto_add_music:
-                            firstPost.settings.autoAddMusic === 'yes',
-                        }
-                      : {}),
-                  },
-                }
-              : {}),
-            ...((firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) > -1
-              ? {
-                  source_info: {
-                    source: 'PULL_FROM_URL',
-                    video_url: firstPost?.media?.[0]?.path!,
-                    ...(firstPost?.media?.[0]?.thumbnailTimestamp!
-                      ? {
-                          video_cover_timestamp_ms:
-                            firstPost?.media?.[0]?.thumbnailTimestamp!,
-                        }
-                      : {}),
-                  },
-                }
-              : {
-                  source_info: {
-                    source: 'PULL_FROM_URL',
-                    photo_cover_index: 0,
-                    photo_images: firstPost.media?.map((p) => p.path),
-                  },
-                  post_mode:
-                    firstPost?.settings?.content_posting_method ===
-                    'DIRECT_POST'
-                      ? 'DIRECT_POST'
-                      : 'MEDIA_UPLOAD',
-                  media_type: 'PHOTO',
-                }),
-          }),
-        }
-      )
+      await this.fetch(url, {
+        method: 'POST',
+        headers,
+        body: bodyString,
+      })
     ).json();
 
     const { url, id: videoId } = await this.uploadedVideoSuccess(
