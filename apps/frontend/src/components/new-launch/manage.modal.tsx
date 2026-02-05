@@ -423,7 +423,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
           mutate();
           toaster.show(
             !existingData.integration
-              ? t('added_successfully', 'Added successfully')
+              ? t('added_successfully', 'Added successfully. It may take a few minutes for the content to be processed and be visible on your profile')
               : t('updated_successfully', 'Updated successfully')
           );
         }
